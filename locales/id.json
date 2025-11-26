@@ -1,9 +1,42 @@
 {
-    "welcome": "Selamat datang di KieAI Bot! Saya bisa membuat gambar menggunakan model Nano Banana.",
-    "processing": "Tugas dibuat dengan ID: %s. Mohon tunggu, sedang memproses gambar...",
-    "success": "Selesai! Ini gambar Anda.",
-    "error_api": "Gagal menghubungi server AI.",
-    "error_generic": "Terjadi kesalahan.",
-    "select_lang": "Silakan pilih bahasa:",
-    "lang_set": "Bahasa diubah ke Indonesia."
-  }
+  "welcome": "<b>Selamat Datang!</b> Gunakan /img untuk membuat gambar.",
+  "select_provider": "<b>Pilih Penyedia AI:</b>",
+  "provider_msg": "<b>Penyedia:</b> %s\nPilih Model:",
+  "error_model_not_found": "Error: Model tidak ditemukan.",
+  "error_generic": "Terjadi kesalahan.",
+  "btn_back": "🔙 Kembali",
+  "btn_back_models": "🔙 Kembali ke Model",
+  "btn_done": "✅ Selesai",
+  
+  "dash_model": "🚀 <b>Model:</b> %s\n",
+  "dash_status": "📝 <b>Status:</b> <i>%s</i>\n\n",
+  "dash_status_wait": "Menunggu Prompt...",
+  "dash_settings": "⚙️ <b>Pengaturan Saat Ini:</b>\n",
+  "dash_footer": "👇 <i>Atur opsi di bawah atau langsung ketik prompt Anda:</i>",
+  "dash_files_count": "• Input Gambar: %d file\n",
+  
+  "btn_set": "Atur %s",
+  "btn_upload_img": "🖼️ Upload Gambar",
+  "select_option": "<b>Pilih %s:</b>",
+  
+  "upload_instruction": "🖼️ <b>Mode Upload</b>\n\nSilakan kirim foto Anda sekarang. Bisa kirim lebih dari satu.\nTekan <b>Selesai</b> jika sudah.",
+  "upload_warn_wrong_mode": "🖼️ Saya sedang menunggu gambar. Silakan upload atau klik <b>Selesai</b>.",
+  "upload_max_limit": "⚠️ Maksimal 8 gambar.",
+  "upload_received": "✅ <b>Gambar Diterima!</b> (%d/8)\nKirim lagi atau klik tombol <b>Selesai</b>.",
+  "upload_fail_url": "❌ Gagal mengambil URL gambar.",
+  
+  "gen_start": "🎨 Membuat dengan <b>%s</b>...\nPrompt: <i>%s</i>",
+  "gen_fail_start": "❌ Gagal memulai pembuatan gambar.",
+  "gen_timeout": "⚠️ Waktu habis (Timeout).",
+  "gen_fail": "❌ Gagal: %s",
+  "gen_result_empty": "⚠️ URL Hasil kosong.",
+  "gen_success_caption": "Dibuat oleh KieAI",
+  
+  "err_download": "❌ Gagal mengunduh gambar hasil.",
+  "err_server": "❌ Server gambar merespon error.",
+  "err_send_tele": "❌ Gagal mengirim gambar ke Telegram.",
+  "start_hint": "Silakan gunakan /img untuk memulai.",
+
+  "menu_lang_title": "🌐 <b>Pilih Bahasa:</b>",
+  "menu_lang_success": "✅ Bahasa diubah ke <b>Indonesia</b> 🇮🇩"
+}
