@@ -1,0 +1,13 @@
+# kunci
+.env
+
+kieAITelegram
+kieAITelegram.exe
+
+# Database Lokal 
+*.db
+*.db-journal
+
+# Folder IDE 
+.vscode/
+.idea/

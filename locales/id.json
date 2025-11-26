@@ -1,0 +1,9 @@
+{
+    "welcome": "Selamat datang di KieAI Bot! Saya bisa membuat gambar menggunakan model Nano Banana.",
+    "processing": "Tugas dibuat dengan ID: %s. Mohon tunggu, sedang memproses gambar...",
+    "success": "Selesai! Ini gambar Anda.",
+    "error_api": "Gagal menghubungi server AI.",
+    "error_generic": "Terjadi kesalahan.",
+    "select_lang": "Silakan pilih bahasa:",
+    "lang_set": "Bahasa diubah ke Indonesia."
+  }

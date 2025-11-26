@@ -1,0 +1,9 @@
+{
+    "welcome": "Welcome to KieAI Bot! I can generate images using Nano Banana models.",
+    "processing": "Task created with ID: %s. Please wait while I generate your image...",
+    "success": "Generation complete! Here is your image.",
+    "error_api": "Failed to communicate with AI server.",
+    "error_generic": "Something went wrong.",
+    "select_lang": "Please select your language:",
+    "lang_set": "Language set to English."
+  }

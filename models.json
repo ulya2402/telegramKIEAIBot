@@ -1,0 +1,38 @@
+[
+  {
+    "id": "google",
+    "name": "Google",
+    "models": [
+      {
+        "id": "nano-banana",
+        "name": "Nano Banana",
+        "api_model_id": "google/nano-banana",
+        "description": "Standard generation. Good for general art.",
+        "supported_ops": ["ratio", "format"],
+        "ratios": ["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9", "auto"],
+        "resolutions": [],
+        "formats": ["png", "jpeg"]
+      },
+      {
+        "id": "nano-banana-pro",
+        "name": "Nano Banana Pro",
+        "api_model_id": "nano-banana-pro",
+        "description": "Professional grade. High detail & resolution.",
+        "supported_ops": ["ratio", "resolution", "format", "image_input"],
+        "ratios": ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"],
+        "resolutions": ["1K", "2K", "4K"],
+        "formats": ["png", "jpg"]
+      },
+      {
+        "id": "nano-banana-edit",
+        "name": "Nano Banana Edit",
+        "api_model_id": "google/nano-banana-edit",
+        "description": "Turn photo into character/edit image.",
+        "supported_ops": ["ratio", "format", "image_input"],
+        "ratios": ["1:1", "9:16", "16:9", "3:4", "4:3", "3:2", "2:3", "5:4", "4:5", "21:9", "auto"],
+        "resolutions": [],
+        "formats": ["png", "jpeg"]
+      }
+    ]
+  }
+]
