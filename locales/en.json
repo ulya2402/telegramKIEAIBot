@@ -25,8 +25,8 @@
   "upload_received": "✅ <b>Image Received!</b> (%d/8)\nSend more or click <b>Done</b> button above.",
   "upload_fail_url": "❌ Failed to get image URL.",
   
-  "gen_start": "🎨 Generating with <b>%s</b>...\nPrompt: <i>%s</i>",
-  "gen_fail_start": "❌ Failed to start generation.",
+  "gen_start": "🎨 <b>Generating Image...</b>\n\n🤖 Model: <code>%s</code>\n⏳ Please wait...",
+  "gen_caption": "✅ <b>Generation Complete!</b>\n\n⚙️ <b>Model:</b> %s\n📐 <b>Ratio:</b> %s\n\n📝 <b>Prompt:</b>\n<code>%s</code>",
   "gen_timeout": "⚠️ Timeout.",
   "gen_fail": "❌ Failed: %s",
   "gen_result_empty": "⚠️ Result URL is empty.",

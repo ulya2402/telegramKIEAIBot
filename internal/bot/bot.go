@@ -438,33 +438,41 @@ func (b *Bot) processImageGeneration(chatID int64, userID int64, prompt string, 
 		return
 	}
 	
-	startMsg := fmt.Sprintf(b.Localizer.Get(lang, "gen_start"), model.Name, prompt)
-	b.sendMessage(chatID, startMsg)
+	startMsg := fmt.Sprintf(b.Localizer.Get(lang, "gen_start"), model.Name) 
+	
+	// FIX: Sekarang pemanggilannya jauh lebih simpel & bersih
+	statusMsgID, _ := b.sendMessageReturnID(chatID, startMsg)
 	
 	go func() {
-		log.Printf("[DEBUG] Starting Task with Options: %+v", state.DraftOptions)
-
 		taskID, err := b.KieClient.CreateTaskComplex(prompt, model.APIModelID, state.DraftOptions)
 		if err != nil {
 			log.Printf("API Error: %v", err)
 			b.sendMessage(chatID, b.Localizer.Get(lang, "gen_fail_start"))
 			return
 		}
-		b.pollTaskResult(chatID, taskID, lang)
+		b.pollTaskResult(chatID, taskID, model.ID, lang, prompt, statusMsgID, state.DraftOptions)
 	}()
 }
 
-func (b *Bot) pollTaskResult(chatID int64, taskID string, lang string) {
+// FIX: Update parameter menjadi 7 buah
+func (b *Bot) pollTaskResult(chatID int64, taskID string, modelID string, lang string, originalPrompt string, statusMsgID int64, options map[string]interface{}) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	timeout := time.After(3 * time.Minute)
+	
 	for {
 		select {
 		case <-timeout:
+			// FIX: Hapus pesan status jika timeout
+			if statusMsgID != 0 {
+				b.deleteMessage(chatID, statusMsgID)
+			}
 			b.sendMessage(chatID, b.Localizer.Get(lang, "gen_timeout"))
 			return
 		case <-ticker.C:
-			status, err := b.KieClient.GetTaskStatus(taskID)
+			b.sendChatAction(chatID, "upload_photo")
+
+			status, err := b.KieClient.GetTaskStatus(taskID, modelID)
 			if err != nil {
 				continue
 			}
@@ -475,12 +483,43 @@ func (b *Bot) pollTaskResult(chatID int64, taskID string, lang string) {
 
 				if len(res.ResultURLs) > 0 {
 					imgURL := res.ResultURLs[0]
-					b.sendPhoto(chatID, imgURL, b.Localizer.Get(lang, "gen_success_caption"), lang)
+					
+					// FIX: Hapus pesan status "Waiting..."
+					if statusMsgID != 0 {
+						b.deleteMessage(chatID, statusMsgID)
+					}
+
+					// Format Caption
+					displayPrompt := originalPrompt
+					if len(displayPrompt) > 300 {
+						displayPrompt = displayPrompt[:300] + "..."
+					}
+					
+					ratio := "1:1"
+					if r, ok := options["ratio"].(string); ok {
+						ratio = r
+					}
+					
+					modelName := "Unknown Model"
+					modelObj := core.GetModelByID(modelID)
+					if modelObj != nil {
+						modelName = modelObj.Name
+					}
+
+					caption := fmt.Sprintf(b.Localizer.Get(lang, "gen_caption"), modelName, ratio, displayPrompt)
+
+					b.sendPhoto(chatID, imgURL, caption, lang)
 				} else {
+					if statusMsgID != 0 {
+						b.deleteMessage(chatID, statusMsgID)
+					}
 					b.sendMessage(chatID, b.Localizer.Get(lang, "gen_result_empty"))
 				}
 				return
 			} else if status.Data.State == "fail" {
+				if statusMsgID != 0 {
+					b.deleteMessage(chatID, statusMsgID)
+				}
 				failMsg := fmt.Sprintf(b.Localizer.Get(lang, "gen_fail"), status.Data.FailMsg)
 				b.sendMessage(chatID, failMsg)
 				return
@@ -489,19 +528,16 @@ func (b *Bot) pollTaskResult(chatID int64, taskID string, lang string) {
 	}
 }
 
-func (b *Bot) sendPhoto(chatID int64, photoURL, caption, lang string) {
-	log.Printf("[PROXY] Downloading image: %s", photoURL)
-	
+func (b *Bot) sendPhoto(chatID int64, photoURL, caption, lang string) {	
 	resp, err := http.Get(photoURL)
 	if err != nil {
-		log.Printf("[PROXY ERROR] Download failed: %v", err)
+		log.Printf("Download failed: %v", err)
 		b.sendMessage(chatID, b.Localizer.Get(lang, "err_download"))
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		log.Printf("[PROXY ERROR] Download Status: %d", resp.StatusCode)
 		b.sendMessage(chatID, b.Localizer.Get(lang, "err_server"))
 		return
 	}
@@ -510,6 +546,8 @@ func (b *Bot) sendPhoto(chatID int64, photoURL, caption, lang string) {
 	writer := multipart.NewWriter(body)
 	writer.WriteField("chat_id", fmt.Sprintf("%d", chatID))
 	writer.WriteField("caption", caption)
+
+	writer.WriteField("parse_mode", "HTML")
 	
 	part, err := writer.CreateFormFile("photo", "image.png")
 	if err != nil {
@@ -527,18 +565,11 @@ func (b *Bot) sendPhoto(chatID int64, photoURL, caption, lang string) {
 	client := &http.Client{Timeout: 60 * time.Second}
 	uploadResp, err := client.Do(uploadReq)
 	if err != nil {
-		log.Printf("[PROXY ERROR] Upload to Telegram failed: %v", err)
+		log.Printf("Upload to Telegram failed: %v", err)
 		b.sendMessage(chatID, b.Localizer.Get(lang, "err_send_tele"))
 		return
 	}
 	defer uploadResp.Body.Close()
-	
-	if uploadResp.StatusCode != 200 {
-		bodyBytes, _ := io.ReadAll(uploadResp.Body)
-		log.Printf("[TELEGRAM FAIL] Status: %d | Body: %s", uploadResp.StatusCode, string(bodyBytes))
-	} else {
-		log.Printf("[TELEGRAM SUCCESS] Image sent!")
-	}
 }
 
 func (b *Bot) sendMessage(chatID int64, text string) {
@@ -546,6 +577,36 @@ func (b *Bot) sendMessage(chatID int64, text string) {
 		ChatID: chatID, Text: text, ParseMode: "HTML",
 	})
 }
+
+// Ubah return type menjadi (int64, error)
+func (b *Bot) sendMessageReturnID(chatID int64, text string) (int64, error) {
+	jsonData, _ := json.Marshal(models.SendMessageRequest{
+		ChatID: chatID, Text: text, ParseMode: "HTML",
+	})
+	resp, err := http.Post(fmt.Sprintf("%s/sendMessage", b.APIURL), "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	
+	// Kita buat struct khusus di sini untuk menangkap respon sendMessage
+	// karena formatnya beda dengan getUpdates
+	var response struct {
+		Ok     bool                    `json:"ok"`
+		Result *models.TelegramMessage `json:"result"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return 0, err
+	}
+
+	if !response.Ok || response.Result == nil {
+		return 0, fmt.Errorf("failed to send message")
+	}
+
+	return response.Result.MessageID, nil
+}
+
 func (b *Bot) sendMessageWithKeyboard(chatID int64, text string, kb models.InlineKeyboardMarkup) {
 	b.sendJSON("sendMessage", models.SendMessageRequest{
 		ChatID: chatID, Text: text, ReplyMarkup: kb, ParseMode: "HTML",
@@ -564,4 +625,14 @@ func (b *Bot) sendJSON(method string, data interface{}) {
 		return
 	}
 	defer resp.Body.Close()
+}
+
+func (b *Bot) sendChatAction(chatID int64, action string) {
+	req := models.SendChatActionRequest{ChatID: chatID, Action: action}
+	b.sendJSON("sendChatAction", req)
+}
+
+func (b *Bot) deleteMessage(chatID int64, messageID int64) {
+	req := models.DeleteMessageRequest{ChatID: chatID, MessageID: messageID}
+	b.sendJSON("deleteMessage", req)
 }

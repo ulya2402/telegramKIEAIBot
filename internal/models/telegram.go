@@ -74,3 +74,13 @@ type InlineKeyboardButton struct {
 	Text         string `json:"text"`
 	CallbackData string `json:"callback_data"`
 }
+
+type SendChatActionRequest struct {
+	ChatID int64  `json:"chat_id"`
+	Action string `json:"action"`
+}
+
+type DeleteMessageRequest struct {
+	ChatID    int64 `json:"chat_id"`
+	MessageID int64 `json:"message_id"`
+}

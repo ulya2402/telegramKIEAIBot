@@ -34,5 +34,21 @@
         "formats": ["png", "jpeg"]
       }
     ]
+  },
+  {
+    "id": "openai",
+    "name": "OpenAI (GPT)",
+    "models": [
+      {
+        "id": "gpt-4o-image",
+        "name": "GPT-4o Image",
+        "api_model_id": "gpt-4o-image",
+        "description": "Smartest model. High quality & logic.",
+        "supported_ops": ["ratio", "image_input"],
+        "ratios": ["1:1", "3:2", "2:3"],
+        "resolutions": [],
+        "formats": []
+      }
+    ]
   }
 ]

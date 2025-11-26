@@ -25,12 +25,12 @@
   "upload_received": "✅ <b>Gambar Diterima!</b> (%d/8)\nKirim lagi atau klik tombol <b>Selesai</b>.",
   "upload_fail_url": "❌ Gagal mengambil URL gambar.",
   
-  "gen_start": "🎨 Membuat dengan <b>%s</b>...\nPrompt: <i>%s</i>",
+  "gen_start": "🎨 <b>Sedang Membuat Gambar...</b>\n\n🤖 Model: <code>%s</code>\n⏳ Mohon tunggu sebentar...",
   "gen_fail_start": "❌ Gagal memulai pembuatan gambar.",
   "gen_timeout": "⚠️ Waktu habis (Timeout).",
   "gen_fail": "❌ Gagal: %s",
   "gen_result_empty": "⚠️ URL Hasil kosong.",
-  "gen_success_caption": "Dibuat oleh KieAI",
+  "gen_caption": "✅ <b>Selesai!</b>\n\n⚙️ <b>Model:</b> %s\n📐 <b>Rasio:</b> %s\n\n📝 <b>Prompt:</b>\n<code>%s</code>",
   
   "err_download": "❌ Gagal mengunduh gambar hasil.",
   "err_server": "❌ Server gambar merespon error.",
