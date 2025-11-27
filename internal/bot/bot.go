@@ -3,6 +3,7 @@ package bot
 import (
 	"bytes"
 	"encoding/json"
+	"context"
 	"fmt"
 	"io"
 	"kieAITelegram/internal/api"
@@ -14,6 +15,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -24,6 +26,8 @@ type Bot struct {
 	KieClient *api.KieClient
 	Localizer *i18n.Localizer
 	Offset    int64
+	activeTasks map[int64]context.CancelFunc 
+	mu          sync.Mutex
 }
 
 func NewBot(token string, db *database.SQLiteDB, kie *api.KieClient, loc *i18n.Localizer) *Bot {
@@ -34,6 +38,7 @@ func NewBot(token string, db *database.SQLiteDB, kie *api.KieClient, loc *i18n.L
 		KieClient: kie,
 		Localizer: loc,
 		Offset:    0,
+		activeTasks: make(map[int64]context.CancelFunc),
 	}
 }
 
@@ -97,13 +102,23 @@ func (b *Bot) handleMessage(msg *models.TelegramMessage) {
 		return
 	}
 
+	if text == "/cancel" {
+		b.handleCancel(chatID, userID, lang)
+		return
+	}
+
 	if text == "/lang" {
 		b.showLanguageMenu(chatID, 0, false, lang)
 		return
 	}
 
 	if text == "/img" {
-		b.showProviders(chatID, 0, false, lang)
+		b.showProviders(chatID, 0, false, lang, false)
+		return
+	}
+
+	if text == "/vids" {
+		b.showProviders(chatID, 0, false, lang, true)
 		return
 	}
 
@@ -134,7 +149,7 @@ func (b *Bot) handlePhotoUpload(msg *models.TelegramMessage) {
 	bestPhoto := msg.Photo[len(msg.Photo)-1]
 	fileURL, err := b.getFileDirectURL(bestPhoto.FileID)
 	if err != nil {
-		log.Printf("[ERROR] Failed to get file URL: %v", err)
+		log.Printf("Error getting file URL: %v", err)
 		b.sendMessage(chatID, b.Localizer.Get(lang, "upload_fail_url"))
 		return
 	}
@@ -181,13 +196,10 @@ func (b *Bot) handleCallback(cb *models.CallbackQuery) {
 		if len(parts) > 1 {
 			newLang := parts[1]
 			b.DB.SetUserLanguage(userID, newLang)
-			
-			// Ambil pesan sukses dalam bahasa BARU
 			successMsg := b.Localizer.Get(newLang, "menu_lang_success")
-			
-			// Edit pesan jadi konfirmasi sukses (hapus tombol)
 			b.editMessageWithKeyboard(chatID, messageID, successMsg, models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{}})
 		}
+
 	case "prov":
 		if len(parts) > 1 {
 			b.showModels(chatID, messageID, parts[1], lang)
@@ -203,6 +215,11 @@ func (b *Bot) handleCallback(cb *models.CallbackQuery) {
 			b.DB.UpdateDraftOption(userID, "image_input", []string{}) 
 			
 			model := core.GetModelByID(modelID)
+			// Auto set ratio for Veo (Wajib 16:9 untuk best result)
+			if model != nil && strings.Contains(model.ID, "veo") {
+				b.DB.UpdateDraftOption(userID, "ratio", "16:9")
+			}
+
 			for _, op := range model.SupportedOps {
 				if op == "resolution" {
 					b.DB.UpdateDraftOption(userID, "resolution", "1K")
@@ -251,9 +268,48 @@ func (b *Bot) handleCallback(cb *models.CallbackQuery) {
 		}
 
 	case "back_home":
-		b.showProviders(chatID, messageID, true, lang)
+		filterVideo := false
+		if len(parts) > 1 && parts[1] == "vids" {
+			filterVideo = true
+		}
+		b.showProviders(chatID, messageID, true, lang, filterVideo)
+	
 	case "back_model":
-		b.showModels(chatID, messageID, "google", lang)
+		state := b.DB.GetUserState(userID)
+		model := core.GetModelByID(state.SelectedModel)
+		if model != nil {
+			provID := "google"
+			for _, p := range core.AI_REGISTRY {
+				for _, m := range p.Models {
+					if m.ID == model.ID {
+						provID = p.ID
+						break
+					}
+				}
+			}
+			b.showModels(chatID, messageID, provID, lang)
+		} else {
+			b.showProviders(chatID, messageID, true, lang, false)
+		}
+	}
+}
+
+func (b *Bot) handleCancel(chatID int64, userID int64, lang string) {
+	// 1. Reset Database State
+	b.DB.SetUserState(userID, "IDLE", "")
+	
+	// 2. Stop Background Process (Jika ada)
+	b.mu.Lock()
+	cancel, exists := b.activeTasks[userID]
+	if exists {
+		cancel() // Matikan Goroutine polling
+		delete(b.activeTasks, userID) // Hapus dari daftar
+		b.mu.Unlock()
+		b.sendMessage(chatID, b.Localizer.Get(lang, "cancel_success"))
+	} else {
+		b.mu.Unlock()
+		// Tetap kirim pesan sukses walaupun tidak ada proses, untuk feedback user
+		b.sendMessage(chatID, b.Localizer.Get(lang, "cancel_success"))
 	}
 }
 
@@ -279,6 +335,8 @@ func (b *Bot) getFileDirectURL(fileID string) (string, error) {
 	return fileURL, nil
 }
 
+// --- UI Functions ---
+
 func (b *Bot) showLanguageMenu(chatID int64, messageID int64, isEdit bool, lang string) {
 	kb := models.InlineKeyboardMarkup{
 		InlineKeyboard: [][]models.InlineKeyboardButton{
@@ -296,9 +354,13 @@ func (b *Bot) showLanguageMenu(chatID int64, messageID int64, isEdit bool, lang 
 	}
 }
 
-func (b *Bot) showProviders(chatID int64, messageID int64, isEdit bool, lang string) {
+func (b *Bot) showProviders(chatID int64, messageID int64, isEdit bool, lang string, filterVideo bool) {
 	var rows [][]models.InlineKeyboardButton
 	for _, p := range core.AI_REGISTRY {
+		isVid := (p.Type == "video")
+		if filterVideo && !isVid { continue }
+		if !filterVideo && isVid { continue }
+
 		rows = append(rows, []models.InlineKeyboardButton{
 			{Text: p.Name, CallbackData: "prov:" + p.ID},
 		})
@@ -324,8 +386,14 @@ func (b *Bot) showModels(chatID int64, messageID int64, providerID string, lang 
 			{Text: m.Name, CallbackData: "model:" + m.ID},
 		})
 	}
+
+	backData := "back_home:img"
+	if prov.Type == "video" {
+		backData = "back_home:vids"
+	}
+
 	rows = append(rows, []models.InlineKeyboardButton{
-		{Text: b.Localizer.Get(lang, "btn_back"), CallbackData: "back_home"},
+		{Text: b.Localizer.Get(lang, "btn_back"), CallbackData: backData},
 	})
 	kb := models.InlineKeyboardMarkup{InlineKeyboard: rows}
 	
@@ -439,38 +507,64 @@ func (b *Bot) processImageGeneration(chatID int64, userID int64, prompt string, 
 	}
 	
 	startMsg := fmt.Sprintf(b.Localizer.Get(lang, "gen_start"), model.Name) 
+	statusMsgResp, err := b.sendMessageReturnID(chatID, startMsg)
 	
-	// FIX: Sekarang pemanggilannya jauh lebih simpel & bersih
-	statusMsgID, _ := b.sendMessageReturnID(chatID, startMsg)
+	var statusMsgID int64
+	if err == nil {
+		statusMsgID = statusMsgResp
+	}
+
+	// --- CONTEXT MANAGEMENT FOR CANCEL ---
+	ctx, cancel := context.WithCancel(context.Background())
+	b.mu.Lock()
+	b.activeTasks[userID] = cancel
+	b.mu.Unlock()
 	
 	go func() {
+		defer func() {
+			b.mu.Lock()
+			delete(b.activeTasks, userID)
+			b.mu.Unlock()
+		}()
+
 		taskID, err := b.KieClient.CreateTaskComplex(prompt, model.APIModelID, state.DraftOptions)
 		if err != nil {
-			log.Printf("API Error: %v", err)
 			b.sendMessage(chatID, b.Localizer.Get(lang, "gen_fail_start"))
 			return
 		}
-		b.pollTaskResult(chatID, taskID, model.ID, lang, prompt, statusMsgID, state.DraftOptions)
+		
+		// FIX: Parameter jumlahnya 8 (termasuk ctx)
+		b.pollTaskResult(ctx, chatID, taskID, model.ID, lang, prompt, statusMsgID, state.DraftOptions)
 	}()
 }
 
-// FIX: Update parameter menjadi 7 buah
-func (b *Bot) pollTaskResult(chatID int64, taskID string, modelID string, lang string, originalPrompt string, statusMsgID int64, options map[string]interface{}) {
+// FIX: Menerima Context 'ctx'
+func (b *Bot) pollTaskResult(ctx context.Context, chatID int64, taskID string, modelID string, lang string, originalPrompt string, statusMsgID int64, options map[string]interface{}) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
-	timeout := time.After(3 * time.Minute)
+	timeout := time.After(5 * time.Minute)
 	
 	for {
 		select {
+		case <-ctx.Done(): // User Cancel
+			if statusMsgID != 0 {
+				b.deleteMessage(chatID, statusMsgID)
+			}
+			return
+
 		case <-timeout:
-			// FIX: Hapus pesan status jika timeout
 			if statusMsgID != 0 {
 				b.deleteMessage(chatID, statusMsgID)
 			}
 			b.sendMessage(chatID, b.Localizer.Get(lang, "gen_timeout"))
 			return
 		case <-ticker.C:
-			b.sendChatAction(chatID, "upload_photo")
+			action := "upload_photo"
+			isVeo := strings.Contains(strings.ToLower(modelID), "veo")
+			if isVeo {
+				action = "upload_video"
+			}
+			b.sendChatAction(chatID, action)
 
 			status, err := b.KieClient.GetTaskStatus(taskID, modelID)
 			if err != nil {
@@ -482,14 +576,12 @@ func (b *Bot) pollTaskResult(chatID int64, taskID string, modelID string, lang s
 				json.Unmarshal([]byte(status.Data.ResultJSON), &res)
 
 				if len(res.ResultURLs) > 0 {
-					imgURL := res.ResultURLs[0]
+					resultURL := res.ResultURLs[0]
 					
-					// FIX: Hapus pesan status "Waiting..."
 					if statusMsgID != 0 {
 						b.deleteMessage(chatID, statusMsgID)
 					}
 
-					// Format Caption
 					displayPrompt := originalPrompt
 					if len(displayPrompt) > 300 {
 						displayPrompt = displayPrompt[:300] + "..."
@@ -500,7 +592,7 @@ func (b *Bot) pollTaskResult(chatID int64, taskID string, modelID string, lang s
 						ratio = r
 					}
 					
-					modelName := "Unknown Model"
+					modelName := "Unknown"
 					modelObj := core.GetModelByID(modelID)
 					if modelObj != nil {
 						modelName = modelObj.Name
@@ -508,7 +600,11 @@ func (b *Bot) pollTaskResult(chatID int64, taskID string, modelID string, lang s
 
 					caption := fmt.Sprintf(b.Localizer.Get(lang, "gen_caption"), modelName, ratio, displayPrompt)
 
-					b.sendPhoto(chatID, imgURL, caption, lang)
+					if isVeo || strings.Contains(strings.ToLower(resultURL), ".mp4") {
+						b.sendVideo(chatID, resultURL, caption)
+					} else {
+						b.sendPhoto(chatID, resultURL, caption, lang)
+					}
 				} else {
 					if statusMsgID != 0 {
 						b.deleteMessage(chatID, statusMsgID)
@@ -528,7 +624,94 @@ func (b *Bot) pollTaskResult(chatID int64, taskID string, modelID string, lang s
 	}
 }
 
-func (b *Bot) sendPhoto(chatID int64, photoURL, caption, lang string) {	
+func (b *Bot) sendVideo(chatID int64, videoURL, caption string) {
+	b.sendChatAction(chatID, "upload_video")
+	
+	resp, err := http.Get(videoURL)
+	if err != nil {
+		// Log Error Standar (Tanpa tag Debug)
+		log.Printf("Video Download Error: %v", err)
+		b.sendMessage(chatID, "❌ Gagal mendownload video dari server AI.")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		log.Printf("Video Server Error: Status %d", resp.StatusCode)
+		b.sendMessage(chatID, "❌ Server AI menolak unduhan.")
+		return
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	writer.WriteField("chat_id", fmt.Sprintf("%d", chatID))
+	writer.WriteField("caption", caption)
+	writer.WriteField("parse_mode", "HTML")
+	writer.WriteField("supports_streaming", "true") 
+
+	part, err := writer.CreateFormFile("video", "video.mp4")
+	if err != nil {
+		return
+	}
+
+	_, err = io.Copy(part, resp.Body)
+	if err != nil {
+		return
+	}
+	writer.Close()
+
+	uploadURL := fmt.Sprintf("%s/sendVideo", b.APIURL)
+	
+	uploadReq, _ := http.NewRequest("POST", uploadURL, body)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+
+	client := &http.Client{Timeout: 120 * time.Second}
+	uploadResp, err := client.Do(uploadReq)
+	if err != nil {
+		log.Printf("Telegram Upload Error: %v", err)
+		// Fallback diam-diam tanpa log berisik
+		b.sendVideoByLink(chatID, videoURL, caption)
+		return
+	}
+	defer uploadResp.Body.Close()
+
+	respBody, _ := io.ReadAll(uploadResp.Body)
+	
+	if uploadResp.StatusCode != 200 {
+		// Penting: Tetap log error body dari Telegram jika gagal
+		log.Printf("Telegram Rejected Video: %s", string(respBody))
+		b.sendVideoByLink(chatID, videoURL, caption)
+	}
+}
+
+func (b *Bot) sendVideoByLink(chatID int64, videoURL, caption string) {
+	reqBody := map[string]interface{}{
+		"chat_id":    chatID,
+		"video":      videoURL, 
+		"caption":    caption,
+		"parse_mode": "HTML",
+	}
+	
+	jsonData, _ := json.Marshal(reqBody)
+	resp, err := http.Post(fmt.Sprintf("%s/sendVideo", b.APIURL), "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("[VIDEO LINK ERROR] %v", err)
+		b.sendMessage(chatID, "❌ Gagal mengirim video (Network Error).")
+		return
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != 200 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("[VIDEO LINK FAIL] Telegram Response: %s", string(bodyBytes))
+		b.sendMessage(chatID, fmt.Sprintf("⚠️ Gagal memproses video.\n\nSilakan download manual: <a href=\"%s\">Klik Disini</a>", videoURL))
+	} else {
+		log.Println("[VIDEO] Berhasil dikirim via Link.")
+	}
+}
+
+func (b *Bot) sendPhoto(chatID int64, photoURL, caption, lang string) {
 	resp, err := http.Get(photoURL)
 	if err != nil {
 		log.Printf("Download failed: %v", err)
@@ -546,8 +729,7 @@ func (b *Bot) sendPhoto(chatID int64, photoURL, caption, lang string) {
 	writer := multipart.NewWriter(body)
 	writer.WriteField("chat_id", fmt.Sprintf("%d", chatID))
 	writer.WriteField("caption", caption)
-
-	writer.WriteField("parse_mode", "HTML")
+	writer.WriteField("parse_mode", "HTML") 
 	
 	part, err := writer.CreateFormFile("photo", "image.png")
 	if err != nil {
@@ -572,13 +754,22 @@ func (b *Bot) sendPhoto(chatID int64, photoURL, caption, lang string) {
 	defer uploadResp.Body.Close()
 }
 
+func (b *Bot) sendChatAction(chatID int64, action string) {
+	req := models.SendChatActionRequest{ChatID: chatID, Action: action}
+	b.sendJSON("sendChatAction", req)
+}
+
+func (b *Bot) deleteMessage(chatID int64, messageID int64) {
+	req := models.DeleteMessageRequest{ChatID: chatID, MessageID: messageID}
+	b.sendJSON("deleteMessage", req)
+}
+
 func (b *Bot) sendMessage(chatID int64, text string) {
 	b.sendJSON("sendMessage", models.SendMessageRequest{
 		ChatID: chatID, Text: text, ParseMode: "HTML",
 	})
 }
 
-// Ubah return type menjadi (int64, error)
 func (b *Bot) sendMessageReturnID(chatID int64, text string) (int64, error) {
 	jsonData, _ := json.Marshal(models.SendMessageRequest{
 		ChatID: chatID, Text: text, ParseMode: "HTML",
@@ -589,22 +780,16 @@ func (b *Bot) sendMessageReturnID(chatID int64, text string) (int64, error) {
 	}
 	defer resp.Body.Close()
 	
-	// Kita buat struct khusus di sini untuk menangkap respon sendMessage
-	// karena formatnya beda dengan getUpdates
-	var response struct {
+	var result struct {
 		Ok     bool                    `json:"ok"`
 		Result *models.TelegramMessage `json:"result"`
 	}
+	json.NewDecoder(resp.Body).Decode(&result)
 	
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return 0, err
+	if result.Result != nil {
+		return result.Result.MessageID, nil
 	}
-
-	if !response.Ok || response.Result == nil {
-		return 0, fmt.Errorf("failed to send message")
-	}
-
-	return response.Result.MessageID, nil
+	return 0, fmt.Errorf("failed to send")
 }
 
 func (b *Bot) sendMessageWithKeyboard(chatID int64, text string, kb models.InlineKeyboardMarkup) {
@@ -612,11 +797,13 @@ func (b *Bot) sendMessageWithKeyboard(chatID int64, text string, kb models.Inlin
 		ChatID: chatID, Text: text, ReplyMarkup: kb, ParseMode: "HTML",
 	})
 }
+
 func (b *Bot) editMessageWithKeyboard(chatID int64, messageID int64, text string, kb models.InlineKeyboardMarkup) {
 	b.sendJSON("editMessageText", models.EditMessageTextRequest{
 		ChatID: chatID, MessageID: messageID, Text: text, ReplyMarkup: kb, ParseMode: "HTML",
 	})
 }
+
 func (b *Bot) sendJSON(method string, data interface{}) {
 	jsonData, _ := json.Marshal(data)
 	resp, err := http.Post(fmt.Sprintf("%s/%s", b.APIURL, method), "application/json", bytes.NewBuffer(jsonData))
@@ -625,14 +812,4 @@ func (b *Bot) sendJSON(method string, data interface{}) {
 		return
 	}
 	defer resp.Body.Close()
-}
-
-func (b *Bot) sendChatAction(chatID int64, action string) {
-	req := models.SendChatActionRequest{ChatID: chatID, Action: action}
-	b.sendJSON("sendChatAction", req)
-}
-
-func (b *Bot) deleteMessage(chatID int64, messageID int64) {
-	req := models.DeleteMessageRequest{ChatID: chatID, MessageID: messageID}
-	b.sendJSON("deleteMessage", req)
 }

@@ -20,13 +20,12 @@ type AIModel struct {
 type Provider struct {
 	ID     string    `json:"id"`
 	Name   string    `json:"name"`
+	Type   string    `json:"type"` 
 	Models []AIModel `json:"models"`
 }
 
-// Global variable untuk menyimpan data yang dimuat
 var AI_REGISTRY []Provider
 
-// LoadRegistry membaca file JSON dan mengisi variabel AI_REGISTRY
 func LoadRegistry(filePath string) error {
 	file, err := os.ReadFile(filePath)
 	if err != nil {

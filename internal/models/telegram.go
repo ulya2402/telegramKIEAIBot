@@ -11,7 +11,7 @@ type TelegramMessage struct {
 	From      *User       `json:"from"`
 	Chat      *Chat       `json:"chat"`
 	Text      string      `json:"text"`
-	Photo     []PhotoSize `json:"photo"` // Tambahan Baru
+	Photo     []PhotoSize `json:"photo"` 
 }
 
 type PhotoSize struct {

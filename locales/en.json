@@ -38,5 +38,8 @@
   "start_hint": "Please use /img to start.",
 
   "menu_lang_title": "🌐 <b>Select Language:</b>",
-  "menu_lang_success": "✅ Language changed to <b>English</b> 🇺🇸"
+  "menu_lang_success": "✅ Language changed to <b>English</b> 🇺🇸",
+
+  "cancel_success": "🛑 <b>Operation Canceled.</b>",
+  "cancel_nothing": "🤷 Nothing to cancel."
 }

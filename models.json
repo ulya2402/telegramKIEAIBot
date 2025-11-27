@@ -50,5 +50,32 @@
         "formats": []
       }
     ]
+  },
+  {
+    "id": "veo",
+    "name": "Google Veo (Video)",
+    "type": "video", 
+    "models": [
+      {
+        "id": "veo-3-fast",
+        "name": "Veo 3.1 Fast",
+        "api_model_id": "veo3_fast",
+        "description": "Fast text/image to video generation.",
+        "supported_ops": ["ratio", "image_input"], 
+        "ratios": ["16:9", "9:16", "Auto"],
+        "resolutions": [],
+        "formats": []
+      },
+      {
+        "id": "veo-3",
+        "name": "Veo 3.1 Quality",
+        "api_model_id": "veo3",
+        "description": "High quality video generation.",
+        "supported_ops": ["ratio", "image_input"],
+        "ratios": ["16:9", "9:16", "Auto"],
+        "resolutions": [],
+        "formats": []
+      }
+    ]
   }
 ]

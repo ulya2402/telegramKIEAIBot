@@ -38,5 +38,8 @@
   "start_hint": "Silakan gunakan /img untuk memulai.",
 
   "menu_lang_title": "🌐 <b>Pilih Bahasa:</b>",
-  "menu_lang_success": "✅ Bahasa diubah ke <b>Indonesia</b> 🇮🇩"
+  "menu_lang_success": "✅ Bahasa diubah ke <b>Indonesia</b> 🇮🇩",
+
+  "cancel_success": "🛑 <b>Operasi Dibatalkan.</b>",
+  "cancel_nothing": "🤷 Tidak ada yang perlu dibatalkan."
 }

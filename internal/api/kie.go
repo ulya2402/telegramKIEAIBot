@@ -8,6 +8,7 @@ import (
 	"kieAITelegram/internal/models"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -20,9 +21,9 @@ type KieClient struct {
 func NewKieClient(apiKey string) *KieClient {
 	return &KieClient{
 		APIKey:  apiKey,
-		BaseURL: "https://api.kie.ai/api/v1",		
+		BaseURL: "https://api.kie.ai/api/v1",
 		HTTPClient: &http.Client{
-			Timeout: 60 * time.Second, // Naikkan timeout jadi 60 detik
+			Timeout: 60 * time.Second,
 		},
 	}
 }
@@ -30,7 +31,9 @@ func NewKieClient(apiKey string) *KieClient {
 func (c *KieClient) CreateTaskComplex(prompt string, modelName string, options map[string]interface{}) (string, error) {
 	getOpt := func(key string, def string) string {
 		if val, ok := options[key]; ok {
-			if strVal, ok := val.(string); ok { return strVal }
+			if strVal, ok := val.(string); ok {
+				return strVal
+			}
 		}
 		return def
 	}
@@ -40,11 +43,15 @@ func (c *KieClient) CreateTaskComplex(prompt string, modelName string, options m
 			if list, ok := val.([]interface{}); ok {
 				var res []string
 				for _, item := range list {
-					if str, ok := item.(string); ok { res = append(res, str) }
+					if str, ok := item.(string); ok {
+						res = append(res, str)
+					}
 				}
 				return res
 			}
-			if listString, ok := val.([]string); ok { return listString }
+			if listString, ok := val.([]string); ok {
+				return listString
+			}
 		}
 		return []string{}
 	}
@@ -53,9 +60,30 @@ func (c *KieClient) CreateTaskComplex(prompt string, modelName string, options m
 	var jsonData []byte
 	var err error
 
-	// --- BRANCHING LOGIC ---
+	if modelName == "veo3" || modelName == "veo3_fast" {
+		targetURL = c.BaseURL + "/veo/generate"
+		
+		reqBody := map[string]interface{}{
+			"model":       modelName,
+			"prompt":      prompt,
+			"aspectRatio": getOpt("ratio", "16:9"),
+		}
+		
+		images := getArrayOpt("image_input")
+		if len(images) > 0 {
+			reqBody["imageUrls"] = images
+			if len(images) == 1 {
+				reqBody["generationType"] = "FIRST_AND_LAST_FRAMES_2_VIDEO" 
+			} else if len(images) >= 2 {
+				reqBody["generationType"] = "FIRST_AND_LAST_FRAMES_2_VIDEO"
+			}
+		} else {
+			reqBody["generationType"] = "TEXT_2_VIDEO"
+		}
+		
+		jsonData, err = json.Marshal(reqBody)
 
-	if modelName == "gpt-4o-image" {
+	} else if modelName == "gpt-4o-image" { 
 		targetURL = c.BaseURL + "/gpt4o-image/generate"
 		reqBody := map[string]interface{}{
 			"prompt": prompt,
@@ -74,7 +102,7 @@ func (c *KieClient) CreateTaskComplex(prompt string, modelName string, options m
 
 		if modelName == "google/nano-banana" {
 			inputMap["output_format"] = getOpt("format", "png")
-			inputMap["image_size"] = getOpt("ratio", "1:1") 
+			inputMap["image_size"] = getOpt("ratio", "1:1")
 		} else if modelName == "nano-banana-pro" {
 			inputMap["output_format"] = getOpt("format", "png")
 			inputMap["aspect_ratio"] = getOpt("ratio", "1:1")
@@ -95,16 +123,23 @@ func (c *KieClient) CreateTaskComplex(prompt string, modelName string, options m
 		jsonData, err = json.Marshal(reqBody)
 	}
 
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
+
 
 	req, err := http.NewRequest("POST", targetURL, bytes.NewBuffer(jsonData))
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 
 	resp, err := c.HTTPClient.Do(req)
-	if err != nil { return "", err }
+	if err != nil {
+		return "", err
+	}
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
@@ -126,18 +161,16 @@ func (c *KieClient) CreateTaskComplex(prompt string, modelName string, options m
 	return kieResp.Data.TaskID, nil
 }
 
-// Ganti signature fungsi: Tambahkan parameter modelName
 func (c *KieClient) GetTaskStatus(taskID string, modelName string) (*models.KieQueryResponse, error) {
 	var url string
-
-	if modelName == "gpt-4o-image" {
-		// FIX: Endpoint yang benar sesuai dokumentasi
+	if strings.Contains(modelName, "veo") {
+		url = fmt.Sprintf("%s/veo/record-info?taskId=%s", c.BaseURL, taskID)
+	} else if strings.Contains(modelName, "gpt-4o") {
 		url = fmt.Sprintf("%s/gpt4o-image/record-info?taskId=%s", c.BaseURL, taskID)
 	} else {
-		// Endpoint Banana Standard
 		url = fmt.Sprintf("%s/jobs/recordInfo?taskId=%s", c.BaseURL, taskID)
 	}
-	
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil { return nil, err }
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
@@ -153,47 +186,81 @@ func (c *KieClient) GetTaskStatus(taskID string, modelName string) (*models.KieQ
 	}
 
 	var queryResp models.KieQueryResponse
+
+	var unifiedResp struct {
+		Code int `json:"code"`
+		Data struct {
+			Status      interface{} `json:"status"`      
+			SuccessFlag *int        `json:"successFlag"` 
+			State       string      `json:"state"`       
+			
+			Response struct {
+				ResultUrls []string `json:"resultUrls"`
+			} `json:"response"`
+			Info struct {
+				ResultUrls []string `json:"resultUrls"`
+			} `json:"info"`
+			
+			ResultJSON   string `json:"resultJson"`
+			ErrorMessage string `json:"errorMessage"`
+			FailMsg      string `json:"failMsg"`
+		} `json:"data"`
+	}
 	
-	// --- MAPPING MANUAL RESPONSE GPT-4o ---
-	// Karena struktur JSON GPT-4o sedikit berbeda dengan Banana
-	// (Banana: data.state | GPT: data.status)
-	// Kita perlu 'menormalisasi' datanya agar struct models.KieQueryResponse tetap bisa dipakai.
+	if err := json.Unmarshal(bodyBytes, &unifiedResp); err != nil {
+		return nil, err
+	}
+
+	queryResp.Code = unifiedResp.Code
 	
-	if modelName == "gpt-4o-image" {
-		var gptResp struct {
-			Code int `json:"code"`
-			Data struct {
-				Status   string `json:"status"` // SUCCESS
-				Response struct {
-					ResultUrls []string `json:"resultUrls"`
-				} `json:"response"`
-				ErrorMessage string `json:"errorMessage"`
-			} `json:"data"`
+	var statusStr string
+	
+	if val, ok := unifiedResp.Data.Status.(string); ok {
+		statusStr = val
+	} else if val, ok := unifiedResp.Data.Status.(float64); ok {
+		if val == 1 { statusStr = "SUCCESS" } else if val == 0 { statusStr = "GENERATING" } else { statusStr = "FAILED" }
+	} 
+	
+	if statusStr == "" && unifiedResp.Data.SuccessFlag != nil {
+		flag := *unifiedResp.Data.SuccessFlag
+		if flag == 1 { 
+			statusStr = "SUCCESS" 
+		} else if flag == 0 { 
+			statusStr = "GENERATING" 
+		} else { 
+			statusStr = "FAILED" 
 		}
+	}
+
+	if statusStr == "" {
+		statusStr = unifiedResp.Data.State
+	}
+
+	if statusStr == "SUCCESS" || statusStr == "success" {
+		queryResp.Data.State = "success"
 		
-		if err := json.Unmarshal(bodyBytes, &gptResp); err != nil {
-			return nil, err
+		var urls []string
+		if len(unifiedResp.Data.Response.ResultUrls) > 0 {
+			urls = unifiedResp.Data.Response.ResultUrls
+		} else if len(unifiedResp.Data.Info.ResultUrls) > 0 {
+			urls = unifiedResp.Data.Info.ResultUrls
+		} else if unifiedResp.Data.ResultJSON != "" {
+			queryResp.Data.ResultJSON = unifiedResp.Data.ResultJSON
+			return &queryResp, nil
 		}
 
-		// Normalisasi ke struct standard Banana kita
-		queryResp.Code = gptResp.Code
-		
-		// Map Status
-		if gptResp.Data.Status == "SUCCESS" {
-			queryResp.Data.State = "success"
-			// Bungkus resultUrls jadi JSON string agar sama logicnya dengan Banana
-			resJSON, _ := json.Marshal(map[string][]string{"resultUrls": gptResp.Data.Response.ResultUrls})
+		if len(urls) > 0 {
+			resJSON, _ := json.Marshal(map[string][]string{"resultUrls": urls})
 			queryResp.Data.ResultJSON = string(resJSON)
-		} else if gptResp.Data.Status == "GENERATING" {
-			queryResp.Data.State = "waiting"
-		} else if gptResp.Data.Status == "GENERATE_FAILED" || gptResp.Data.Status == "CREATE_TASK_FAILED" {
-			queryResp.Data.State = "fail"
-			queryResp.Data.FailMsg = gptResp.Data.ErrorMessage
 		}
-
+	} else if statusStr == "GENERATING" || statusStr == "PENDING" || statusStr == "waiting" {
+		queryResp.Data.State = "waiting"
 	} else {
-		// Logic Banana Standard (Langsung unmarshal)
-		json.Unmarshal(bodyBytes, &queryResp)
+		queryResp.Data.State = "fail"
+		errMsg := unifiedResp.Data.ErrorMessage
+		if errMsg == "" { errMsg = unifiedResp.Data.FailMsg }
+		if errMsg == "" { errMsg = "Unknown error / Flag Failed" }
+		queryResp.Data.FailMsg = errMsg
 	}
 
 	return &queryResp, nil
