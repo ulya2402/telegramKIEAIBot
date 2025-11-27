@@ -34,8 +34,8 @@ go version
 ### 2. Clone Repository
 Salin kode bot ini ke server Anda menggunakan git:
 ```bash
-git clone https://github.com/username/repo-anda.git
-cd repo-anda
+git clone https://github.com/ulya2402/telegramKIEAIBot.git
+cd telegramKIEAIBot
 ```
 
 ### 3. Konfigurasi
@@ -47,7 +47,7 @@ nano .env
 Isi data berikut di dalam file `.env`:
 ```ini
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
-KIE_API_KEY=kie_live_xxxxxxxxxxxxxxxxxxxx
+KIE_API_KEY=9DTxxxxxxxxxxxxxxxxxxxx
 DB_PATH=./kieAITelegram.db
 DEFAULT_LANG=id
 ```
@@ -61,7 +61,7 @@ go mod tidy
 # Jalankan (Mode Testing)
 go run cmd/bot/main.go
 ```
-Jika berhasil, akan muncul pesan "System initialized. Bot is now running...". Tekan `Ctrl+C` untuk berhenti.
+Jika berhasil, akan muncul pesan "Bot is now running...". Tekan `Ctrl+C` untuk berhenti.
 
 ---
 
@@ -102,7 +102,11 @@ WantedBy=multi-user.target
 3. **Aktifkan Service:**
 ```bash
 sudo systemctl daemon-reload
+```
+```bash
 sudo systemctl enable aibot
+```
+```bash
 sudo systemctl start aibot
 ```
 
