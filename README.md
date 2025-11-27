@@ -1,4 +1,4 @@
-# 🤖 Telegram AI Bot (KieAI Wrapper)
+# Telegram AI Bot Terintegrasi dengan kie.ai
 
 Bot Telegram yang ditulis dengan **Go (Golang)** untuk membuat gambar dan video menggunakan berbagai model AI (Google Nano Banana, GPT-4o, Google Veo, dll) melalui API Kie.ai.
 
@@ -35,6 +35,8 @@ go version
 Salin kode bot ini ke server Anda menggunakan git:
 ```bash
 git clone https://github.com/ulya2402/telegramKIEAIBot.git
+```
+```bash
 cd telegramKIEAIBot
 ```
 
@@ -42,6 +44,8 @@ cd telegramKIEAIBot
 Buat file `.env` dari contoh yang ada:
 ```bash
 cp .env.example .env
+```
+```bash
 nano .env
 ```
 Isi data berikut di dalam file `.env`:
@@ -54,11 +58,12 @@ DEFAULT_LANG=id
 Simpan dengan `Ctrl+X`, lalu `Y`, lalu `Enter`.
 
 ### 4. Build & Jalankan
-```bash
 # Download dependensi
+```bash
 go mod tidy
-
+```
 # Jalankan (Mode Testing)
+```bash
 go run cmd/bot/main.go
 ```
 Jika berhasil, akan muncul pesan "Bot is now running...". Tekan `Ctrl+C` untuk berhenti.
@@ -69,37 +74,70 @@ Jika berhasil, akan muncul pesan "Bot is now running...". Tekan `Ctrl+C` untuk b
 
 Agar bot tetap jalan meskipun Anda keluar dari VPS, gunakan `systemd`.
 
-1. **Buat file service:**
+1. **Buat Aplikasi**
+### Masuk ke folder project
 ```bash
+cd telegramKIEAIBot
+```
+### Build menjadi file bernama 'kiebot'
+```bash
+go build -o kiebot cmd/bot/main.go
+```
+### Beri izin eksekusi
+```bash
+chmod +x kiebot
+```
+
+2. **Menyiapkan Path (Lokasi Folder)**
+Sebelum membuat konfigurasi, Anda harus tahu lokasi lengkap folder project Anda saat ini agar systemd bisa menemukannya.
+
+Ketik perintah ini di terminal:
+```bash
+pwd
+```
+Contoh output yang mungkin muncul: `/root/telegramKIEAIBot` atau `/home/ubuntu/telegramKIEAIBot`
+
+**Catat hasil output tersebut!** Kita sebut ini sebagai **[LOKASI_FOLDER]**.
+
+**WorkingDirectory** adalah: `[LOKASI_FOLDER]`
+**ExecStart adalah:** `[LOKASI_FOLDER]/kiebot`
+
+3. **Buat File Service**
+Buat file konfigurasi baru untuk bot:
+```bas
 sudo nano /etc/systemd/system/aibot.service
 ```
 
-2. **Isi dengan konfigurasi berikut:**
-*(Sesuaikan `User`, `Group`, dan `WorkingDirectory` dengan user dan lokasi folder bot Anda)*
-
-```ini
+4. **Isi Konfigurasi**
+```TOML
 [Unit]
-Description=Telegram AI Bot Service
+Description=Telegram AI Bot Kie Ai
 After=network.target
 
 [Service]
-# Ganti 'root' dengan username VPS Anda jika bukan root
+# User VPS (biasanya root, ubuntu, atau nama user Anda)
 User=root
 Group=root
 
-# Ganti dengan lokasi folder project Anda yang sebenarnya
-WorkingDirectory=/root/folder-bot-anda
-ExecStart=/usr/local/go/bin/go run cmd/bot/main.go
+# Isi dengan hasil command 'pwd' tadi
+WorkingDirectory=/root/telegramKIEAIBot
 
-# Auto-restart jika crash
+# Isi dengan hasil command 'pwd' ditambah '/kiebot'
+ExecStart=/root/telegramKIEAIBot/kiebot
+
+# Restart otomatis jika bot crash
 Restart=always
 RestartSec=5
+
+# Menyimpan log output
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-3. **Aktifkan Service:**
+5. **Aktifkan & Jalankan Bot**
 ```bash
 sudo systemctl daemon-reload
 ```
