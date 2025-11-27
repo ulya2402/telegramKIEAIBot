@@ -41,5 +41,9 @@
   "menu_lang_success": "✅ Bahasa diubah ke <b>Indonesia</b> 🇮🇩",
 
   "cancel_success": "🛑 <b>Operasi Dibatalkan.</b>",
-  "cancel_nothing": "🤷 Tidak ada yang perlu dibatalkan."
+  "cancel_nothing": "🤷 Tidak ada yang perlu dibatalkan.",
+
+  "btn_gen_img": "🖼️ Buat Gambar",
+  "btn_home": "🏠 Menu Utama",
+  "btn_gen_vid": "🎥 Buat Video"
 }

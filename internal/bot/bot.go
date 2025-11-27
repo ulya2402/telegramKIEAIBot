@@ -98,7 +98,8 @@ func (b *Bot) handleMessage(msg *models.TelegramMessage) {
 
 	if text == "/start" {
 		b.DB.SetUserState(userID, "IDLE", "")
-		b.sendMessage(chatID, b.Localizer.Get(lang, "welcome"))
+		// Parameter: chatID, messageID(0), isEdit(false), lang
+		b.showMainMenu(chatID, 0, false, lang)
 		return
 	}
 
@@ -192,6 +193,8 @@ func (b *Bot) handleCallback(cb *models.CallbackQuery) {
 	http.Get(fmt.Sprintf("%s/answerCallbackQuery?callback_query_id=%s", b.APIURL, cb.ID))
 
 	switch action {
+	case "back_to_start":
+		b.showMainMenu(chatID, messageID, true, lang)
 	case "lang":
 		if len(parts) > 1 {
 			newLang := parts[1]
@@ -337,6 +340,30 @@ func (b *Bot) getFileDirectURL(fileID string) (string, error) {
 
 // --- UI Functions ---
 
+func (b *Bot) showMainMenu(chatID int64, messageID int64, isEdit bool, lang string) {
+	kb := models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{
+			{
+				// Tombol ini akan mengarah ke menu pemilihan provider
+				{Text: b.Localizer.Get(lang, "btn_gen_img"), CallbackData: "back_home:img"},
+				{Text: b.Localizer.Get(lang, "btn_gen_vid"), CallbackData: "back_home:vids"},
+			},
+			{
+				// Tombol ganti bahasa
+				{Text: "🌐 Language / Bahasa", CallbackData: "lang:id"},
+			},
+		},
+	}
+
+	text := b.Localizer.Get(lang, "welcome")
+	
+	if isEdit {
+		b.editMessageWithKeyboard(chatID, messageID, text, kb)
+	} else {
+		b.sendMessageWithKeyboard(chatID, text, kb)
+	}
+}
+
 func (b *Bot) showLanguageMenu(chatID int64, messageID int64, isEdit bool, lang string) {
 	kb := models.InlineKeyboardMarkup{
 		InlineKeyboard: [][]models.InlineKeyboardButton{
@@ -365,6 +392,9 @@ func (b *Bot) showProviders(chatID int64, messageID int64, isEdit bool, lang str
 			{Text: p.Name, CallbackData: "prov:" + p.ID},
 		})
 	}
+	rows = append(rows, []models.InlineKeyboardButton{
+		{Text: b.Localizer.Get(lang, "btn_home"), CallbackData: "back_to_start"},
+	})
 	kb := models.InlineKeyboardMarkup{InlineKeyboard: rows}
 	text := b.Localizer.Get(lang, "select_provider")
 
