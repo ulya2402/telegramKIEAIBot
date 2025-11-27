@@ -52,6 +52,22 @@
     ]
   },
   {
+    "id": "qwen",
+    "name": "Qwen AI",
+    "models": [
+      {
+        "id": "qwen-edit",
+        "name": "Qwen Image Edit",
+        "api_model_id": "qwen/image-edit",
+        "description": "Ubah atau edit gambar dengan AI. Wajib upload gambar.",
+        "supported_ops": ["image_input", "ratio", "format"],
+        "ratios": ["square", "square_hd", "portrait_4_3", "portrait_16_9", "landscape_4_3", "landscape_16_9"],
+        "resolutions": [],
+        "formats": ["png", "jpeg"]
+      }
+    ]
+  },
+  {
     "id": "veo",
     "name": "Google Veo (Video)",
     "type": "video", 
