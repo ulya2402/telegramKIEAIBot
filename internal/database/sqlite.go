@@ -3,12 +3,14 @@ package database
 import (
 	"database/sql"
 	"encoding/json"
+	"sync"
 
 	_ "modernc.org/sqlite"
 )
 
 type SQLiteDB struct {
 	DB *sql.DB
+	mu sync.Mutex
 }
 
 type UserState struct {
@@ -83,6 +85,8 @@ func (s *SQLiteDB) SetUserState(userID int64, state string, modelID string) erro
 }
 
 func (s *SQLiteDB) UpdateDraftOption(userID int64, key string, value interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	currentState := s.GetUserState(userID)
 	if currentState.DraftOptions == nil {
 		currentState.DraftOptions = make(map[string]interface{})
